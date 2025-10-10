@@ -1,5 +1,6 @@
+# app.py
 import streamlit as st
-import openai
+from openai import OpenAI
 from fpdf import FPDF
 
 st.set_page_config(page_title="Kids Story Generator", page_icon="📖", layout="centered")
@@ -8,10 +9,14 @@ st.title("📚 Children's Story Generator")
 st.caption("Enter a character name and a theme, then generate a short, age-appropriate story using OpenAI.")
 
 # --- Fetch API key from Streamlit secrets ---
-openai.api_key = st.secrets.get("OPENAI_API_KEY", None)
+api_key = st.secrets.get("OPENAI_API_KEY", None)
 
-if not openai.api_key:
+if not api_key:
     st.error("No OpenAI API key found in st.secrets. Please add it in your Streamlit secrets configuration.")
+    st.stop()
+
+# Create the new OpenAI client (v1)
+client = OpenAI(api_key=api_key)
 
 # --- Inputs ---
 with st.form("story_form"):
@@ -44,7 +49,7 @@ def build_prompt(name, theme, age_group, tone, length, include_moral):
 
 # Generate story
 if generate_button:
-    if not openai.api_key:
+    if not api_key:
         st.error("Please add your API key in Streamlit secrets (st.secrets['OPENAI_API_KEY']).")
     elif not name.strip() or not theme.strip():
         st.error("Please enter both a character name and a theme.")
@@ -52,13 +57,15 @@ if generate_button:
         with st.spinner("Generating story..."):
             prompt = build_prompt(name.strip(), theme.strip(), age_group, tone, length, include_moral)
             try:
-                response = openai.ChatCompletion.create(
+                # New v1 usage:
+                resp = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{"role": "user", "content": prompt}],
                     max_tokens=1000,
                     temperature=0.8,
                 )
-                story = response["choices"][0]["message"]["content"].strip()
+                # in v1 the text lives at resp.choices[0].message.content
+                story = resp.choices[0].message["content"].strip()
             except Exception as e:
                 st.exception(e)
                 story = None
@@ -100,16 +107,17 @@ if generate_button:
             except Exception as e:
                 st.warning("Could not create PDF: " + str(e))
 
+            # Shortened 1-minute reading
             with st.expander("Create a 1-minute reading (shortened)"):
                 try:
-                    mini_prompt = f"Shorten the following story to a 1-minute read (about 150 words), preserving characters and moral: \n\n{story}"
-                    mini_resp = openai.ChatCompletion.create(
+                    mini_prompt = f"Shorten the following story to a 1-minute read (about 150 words), preserving characters and moral:\n\n{story}"
+                    mini_resp = client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[{"role": "user", "content": mini_prompt}],
                         max_tokens=400,
                         temperature=0.7,
                     )
-                    mini_story = mini_resp["choices"][0]["message"]["content"].strip()
+                    mini_story = mini_resp.choices[0].message["content"].strip()
                     st.write(mini_story)
                 except Exception as e:
                     st.info("Could not create 1-minute version: " + str(e))
