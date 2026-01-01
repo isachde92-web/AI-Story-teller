@@ -65,7 +65,7 @@ if generate_button:
                     temperature=0.8,
                 )
                 # in v1 the text lives at resp.choices[0].message.content
-                story = resp.choices[0].message["content"].strip()
+                story = resp.choices[0].message.content.strip()
             except Exception as e:
                 st.exception(e)
                 story = None
