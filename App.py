@@ -2,6 +2,7 @@
 import streamlit as st
 from openai import OpenAI
 from fpdf import FPDF
+import os
 
 st.set_page_config(page_title="Kids Story Generator", page_icon="📖", layout="centered")
 
@@ -15,7 +16,7 @@ if not api_key:
     st.error("No OpenAI API key found in st.secrets. Please add it in your Streamlit secrets configuration.")
     st.stop()
 
-# Create the new OpenAI client (v1)
+# Create the new OpenAI client (v1+)
 client = OpenAI(api_key=api_key)
 
 # --- Inputs ---
@@ -57,14 +58,12 @@ if generate_button:
         with st.spinner("Generating story..."):
             prompt = build_prompt(name.strip(), theme.strip(), age_group, tone, length, include_moral)
             try:
-                # New v1 usage:
                 resp = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=1000,
+                    max_tokens=1200,
                     temperature=0.8,
                 )
-                # in v1 the text lives at resp.choices[0].message.content
                 story = resp.choices[0].message.content.strip()
             except Exception as e:
                 st.exception(e)
@@ -82,42 +81,47 @@ if generate_button:
                 mime="text/plain",
             )
 
-            # Create PDF for download
-            def story_to_pdf(title, text, filename):
+            # ---- Create PDF ----
+            def story_to_pdf(title, text):
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_auto_page_break(auto=True, margin=15)
+
                 pdf.set_font("Arial", 'B', 16)
                 pdf.cell(0, 10, title, ln=True)
                 pdf.ln(4)
+
                 pdf.set_font("Arial", size=12)
                 for line in text.split('\n'):
                     if line.strip() == "":
                         pdf.ln(4)
                     else:
                         pdf.multi_cell(0, 8, line)
-                pdf.output(filename)
 
-            pdf_path = f"{name}_story.pdf"
+                return pdf.output(dest="S").encode("latin-1")
+
             try:
-                story_to_pdf(f"{name}'s Story", story, pdf_path)
-                with open(pdf_path, "rb") as f:
-                    pdf_bytes = f.read()
-                st.download_button("Download PDF", data=pdf_bytes, file_name=pdf_path, mime="application/pdf")
+                pdf_bytes = story_to_pdf(f"{name}'s Story", story)
+                st.download_button(
+                    "Download PDF",
+                    data=pdf_bytes,
+                    file_name=f"{name}_story.pdf",
+                    mime="application/pdf"
+                )
             except Exception as e:
                 st.warning("Could not create PDF: " + str(e))
 
-            # Shortened 1-minute reading
+            # ---- Short 1-minute reading ----
             with st.expander("Create a 1-minute reading (shortened)"):
                 try:
-                    mini_prompt = f"Shorten the following story to a 1-minute read (about 150 words), preserving characters and moral:\n\n{story}"
+                    mini_prompt = f"Shorten the following story to ~150 words (1 minute read), keep tone, characters, and moral:\n\n{story}"
                     mini_resp = client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[{"role": "user", "content": mini_prompt}],
                         max_tokens=400,
                         temperature=0.7,
                     )
-                    mini_story = mini_resp.choices[0].message["content"].strip()
+                    mini_story = mini_resp.choices[0].message.content.strip()
                     st.write(mini_story)
                 except Exception as e:
                     st.info("Could not create 1-minute version: " + str(e))
